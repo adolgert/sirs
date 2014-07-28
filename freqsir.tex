@@ -1,0 +1,235 @@
+\documentclass{article}
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage[margin=0.5in]{geometry}
+\usepackage{xspace}
+%\usepackage{siunitx}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{palatino}
+\usepackage{microtype}
+
+\newcommand{\sir}{\textsc{sir}\xspace}
+\newcommand{\gspn}{\textsc{gspn}\xspace}
+
+\title{SIR}
+\author{Drew}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+This document is about a little \sir simulation along the lines of the
+time-dependent infection rate example from Wearing and others\cite{Wearing2012}.
+We'll use the Semi-Markov library\cite{SemiMarkov2014} to do the simulation.
+
+\section{ODE Model}
+The model, as given in Wearing, is an \sir with birth and death.
+Using $N=S+I+R$, $\mu$ as a death rate, $\gamma$ as a recovery rate,
+and $\beta I/N$ as a freqency-dependent infection rate,
+\begin{eqnarray}
+  \frac{dS}{dt}&=& B - \frac{\beta I}{N}S-\mu S \\
+  \frac{dI}{dt}&=& \frac{\beta I}{N}S-\gamma I-\mu I \\
+  \frac{dR}{dt}&=& \gamma I - \mu R.
+\end{eqnarray}
+The crude birth rate, $B$, is an inhomgeneous term which fixes
+asymptotic population size by breaking
+scaling invariance, which you can see by adding the equations,
+\begin{equation}
+  \frac{dN}{dt}=B-\mu N.
+\end{equation}
+At long times and for fixed $\beta$,
+\begin{eqnarray}
+  N & = & B/\mu \label{eqn::longtime0}\\
+  S & = & \frac{(\mu+\gamma)B}{\beta \mu} \\
+  I & = & \frac{(\beta-\mu-\gamma)B}{\beta(\mu+\gamma)} \\
+  R & = & \gamma I/\mu\label{eqn:longtime}
+\end{eqnarray}
+The model seems well-behaved. We are interested in adding a seasonal
+dependency to this model, so $\beta=\beta_0(1+\beta_1 \cos(2\pi (t-t_i))).$
+Time is measured in years, here. The values used in the example
+are \\
+\begin{tabular}{ll}
+B & 1/70 per year \\
+$\beta$ & 400 per year \\
+$\mu$ & 1/70 per year \\
+$\gamma$ & 365/14 per year.
+\end{tabular} \\
+Note that $N=1$ with the choice of $B/\mu$. Given these values, the
+Eqs.~\ref{eqn::longtime0}--\ref{eqn:longtime} predict
+$S=0.07$, $I=0.0005$, $R=.93$, which looks like what is in the graph
+called ``$R(0)=15.33$.''
+
+\section{Stochastic Model}
+\subsection{Model Definition}
+For background on stochastic \sir, see Allen's chapter\cite{Allen:2008ma}.
+Every transition in the stochastic model is exponential, which makes for
+a simple system. There are three places, $S$, $I$, and $R$, with a transition
+for each term of the differential equation. The \gspn is shown in Fig.~\ref{fig:sirgspn}.
+\begin{figure}
+\centerline{\includegraphics[scale=0.35]{sirexpgspn}}
+\caption{The \gspn for the stochastic model. Note that the infection
+transition includes inputs from all of $S$, $I$, and $R$ because it depends
+on the total $N$ individuals.\label{fig:sirgspn}}
+\end{figure}
+Working from the figure, we list our transitions. \\
+\begin{tabular}{ll}
+  \hline
+  Transition & Hazard Rate \\
+  \hline
+  birth & $B$ \\
+  death-s & $\mu S$ \\
+  death-i & $\mu I$ \\
+  death-r & $\mu R$ \\
+  infect & $\beta SI/(S+I+R)$ \\
+  recover & $\gamma I$ \\
+  waning immunity & $w R$ \\
+  \hline
+\end{tabular}
+
+
+\subsection{Distribution for Seasonal Hazard Rate}
+The only complication is that the hazard rate will be seasonal,
+\begin{equation}
+  \beta(t)=\beta_0(1+\beta_1 \cos(2\pi (t-t_i))),
+\end{equation}
+where $t_i$ is an offset into the year and $\beta_1<1$. It is likely there will be enough
+events per year that we can safely approximate this piecewise, but let's start
+with the exact distribution because we can.
+We can write this as
+\begin{equation}
+  \beta(t)=\beta_0(1+\beta_1 [\cos(2\pi t) \cos(2\pi t_i)+\sin(2\pi t) \sin(2\pi t_i)]).
+\end{equation}
+This hazard depends on the absolute system time but does not depend on
+when an individual entered the susceptible state. We construct the
+distribution for this transition, from the hazard rate, as
+\begin{equation}
+  F(t,t_0)=1-e^{-\int_{t_0}^t\beta_0(1+\beta_1 \cos(2\pi (s-t_i)))ds},
+\end{equation}
+which we will need to invert, $U=F(t,t_0)$, in order to sample.
+Looking just at the integral,
+\begin{equation}
+  \int_{t_0}^t\beta_0(1+\beta_1 \cos(2\pi (s-t_i)))=\beta_0\left((t-t_0)+\frac{\beta_1}{2\pi}\sin(2\pi (t-t_i))-\frac{\beta_1}{2\pi}\sin(2\pi (t_0-t_i))\right)
+\end{equation}
+If we define $t_0'=t_0+\frac{\beta_1}{2\pi}\sin(2\pi (t_0-t_i)),$ then we
+have to solve
+\begin{equation}
+  -\ln(1-U)/\beta_0+t_0'=t+\frac{\beta_1}{2\pi}\sin(2\pi (t-t_i)).
+\end{equation}
+
+% s(a-b)=sa cb - ca sb
+% s(t-i)-s(o-i)=st ci - ct si -(so ci- co si)
+% st ci - ct si - so ci + co si
+% (st-so) ci - (ct-co) si
+
+% s(t-o)=st co - ct so
+% c(t-o)=ct co - st so
+
+% mult by co
+% st co ci - ct co si - so co ci + co co si
+
+% add 
+
+\section{Sample Runs and Timing}
+Using the initial values from the Eq.~\ref{eqn:longtime}, the graph
+in Fig.~\ref{fig:longbehavior} shows a long time equilibrium value
+which is the same as that for the \textsc{ode}.
+\begin{figure}
+\centerline{\includegraphics[scale=1.0]{fixed_no_seasonal}}
+\caption{Initial values from \textsc{ode} are the same as the long-time
+equilibrium of this stochastic model of 100,000 individuals.
+Here there is no seasonality.\label{fig:longbehavior}}
+\end{figure}
+
+\begin{figure}
+\centerline{\includegraphics[scale=1.0]{feeling_better}}
+\caption{Another trajectory, this time for no birth or death.
+It looks as we hope for SIR.\label{fig:longexact}}
+\end{figure}
+
+\begin{figure}
+\centerline{\includegraphics[scale=0.8]{tenmillion}}
+\caption{When we go to 10,000,000 individuals, the results look like the
+ODE.}
+\end{figure}
+
+
+\begin{figure}
+\centerline{\includegraphics[scale=0.8]{smoothedtenmillion}}
+\caption{A closeup of the smoothed trajectory for 10,000,000 individuals
+shows how seasonality affects the number of infected.}
+\end{figure}
+
+Runtime for the model, covering $30$~years, is shown in the table below.
+The results come from \texttt{python runner.py --time --runcnt 10}. \\
+\begin{tabular}{cc}
+\# individuals & wall clock seconds \\
+5000 & 0.013 \\
+10,000 & 0.025 \\
+20,000 & 0.050 \\
+50,000 & 0.14 \\
+100,000 & 0.37 \\
+200,000 & 1.0 \\
+500,000 & 5.3 \\
+1,000,000 & 19
+\end{tabular} \\
+These values assume a single thread, but the code is multi-threaded
+using the \texttt{-j} flag. For instance, running 100, 30-year trajectories
+of 200,000 individuals on my 4-core machine takes about 30 seconds.
+
+\section{Running the Executable}
+Command-line options include all of the parameters to the system, plus the following:
+\newcommand{\opt}[1]{\texttt{#1}}
+\begin{description}
+  \item[\opt{-j}] The number of threads to use.
+  \item[\opt{-{}-runcnt}] How many times to run the simulation.
+  \item[\opt{-s}] The total number of individuals. Not the number of susceptibles,
+   surprisingly. Want that changed?
+  \item[\opt{-i}] Total number of infecteds.
+  \item[\opt{-r}] Total number of recovereds.
+  \item[\opt{-{}-seed}] Starting random seed. Multithreaded runs use a seed per thread, so don't just increment a single seed.
+  \item[\opt{-{}-endtime}] How many years to run.
+  \item[\opt{-{}-exacttraj}] There are two observers of the trajectory. One saves
+  every step. The inexact one only saves steps when they change $.1\%$ of the value.
+  \item[\opt{-{}-exactinfect}] Whether to use the time-dependent infection rate
+  or the inexact version, which uses a piecewise approximation. This exists so that
+  we can put an upper bound on the error to the obviously good choice of a piecewise infection rate.
+  \item[\opt{-{}-datafile}] Filename to which to save. This is overwritten each time.
+  We can change that, too.
+  \item[\opt{-{}-loglevel}] Whether to print logging information. You can quiet the program significantly with \opt{-{}-loglevel=error}.
+  \item[\opt{-{}-info}] Show how the program was built, meaning its git repository
+  and makefile.
+\end{description}
+
+Files in the directory:
+\begin{description}
+  \item[default\_parser.py] Puts some default arguments into Python's argparse module.
+  \item[freqsir.*] This document.
+  \item[getgit.py] Retrieves the git repository information from the current
+  directory and places it into a C++ header file so the program can know
+  where it came from.
+  \item[hdf\_file.\{hpp,cpp\}] The file format uses HDF5. This class
+  uses a C++ PIMPL idiom. Note the mutex which guarantees only one
+  writer at a time, so multiple threads can hold this object.
+  \item[main.cpp] The C++ main().
+  \item[Makefile] The SMVHIDELOG option removes all tracing code, which
+  is about ten percent or more of the run time. See this file for the
+  list of required libraries.
+  \item[quick.py] Plotting trajectories using Matplotlib.
+  \item[runner.py] Runs timing. Also a demonstration of how to read
+  the HDF5 file.
+  \item[seasonal.\{cpp,hpp\}] Implements a statistical distribution
+  whose hazard rate is the seasonal hazard for infection. Uses
+  GSL's root-finding methods to solve for the sample.
+  \item[sir\_exp.\{cpp,hpp\}] This is the GSPN model! Everything
+  scientific is in this file, between lines 100 and 400.
+\end{description}
+
+\bibliography{freqsir}
+\bibliographystyle{plain}
+\end{document}
+
+
