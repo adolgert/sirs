@@ -335,7 +335,13 @@ BuildSystem(int64_t individual_cnt, bool exactbeta)
 }
 
 
-
+/*!
+ * Given a vector of checkpoint times, for the state of the system
+ * at each of those times, count the number of
+ * susceptibles and infecteds at that time. Form into two vectors,
+ * one for susceptibles, one for infecteds. Then repeat the whole
+ * simulation 10^4 times. Return these vectors.
+ */
 template<typename SIRState>
 struct SIROutput
 {
