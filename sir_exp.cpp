@@ -15,6 +15,9 @@
 #include "boost/property_map/property_map.hpp"
 #include "boost/mpl/vector.hpp"
 #include "boost/program_options.hpp"
+#include "boost/bimap/bimap.hpp"
+#include "boost/bimap/set_of.hpp"
+#include "boost/bimap/multiset_of.hpp"
 #include "smv.hpp"
 #include "sir_exp.hpp"
 #include "seasonal.hpp"
@@ -25,6 +28,8 @@ using namespace smv;
 
 struct IndividualToken
 {
+  double time_entered_place;
+  int64_t id;
   IndividualToken()=default;
 
   inline friend
@@ -97,27 +102,82 @@ using Dist=TransitionDistribution<RandGen>;
 using ExpDist=ExponentialDistribution<RandGen>;
 
 
+template<typename RNG>
+class CombinedDistribution : public TransitionDistribution<RandGen> {
+public:
+  CombinedDistribution() {}
+  virtual ~CombinedDistribution() {}
+  virtual double Sample(double current_time, RNG& rng) const {
+    return std::numeric_limits<double>::infinity(); };
+  virtual double EnablingTime() const { return 0.0; }
+  virtual bool BoundedHazard() const { return false; }
+  virtual double HazardIntegral(double t0, double t1) const { return 0.0; }
+  virtual double ImplicitHazardIntegral(double xa, double t0) const {
+    return 0.0;
+  }
+};
+
+
+
 
 // Now make specific transitions.
 class Infect : public SIRTransition
 {
+  using TokenId=int64_t;
+  PropagateCompetingProcesses<TokenId,RandGen> propagator_;
+  // This object must track what tokens have been changed.
+  using Time=double;
+  using InOrOut=bool;
+  using Indicator=boost::bimaps::bimap<boost::bimaps::set_of<TokenId>,
+    boost::bimaps::multiset_of<InOrOut>, boost::bimaps::with_info<Time>>;
+  Indicator ids_;
+  bool seen_flag_;
+
+public:
+  Infect() : seen_flag_(false) {}
+  virtual ~Infect() {}
+
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) const override {
+    double te, double t0) override {
     // If these are just size_t, then the rate calculation overflows.
     int64_t S=lm.template Length<0>(0);
     int64_t I=lm.template Length<0>(1);
     int64_t R=lm.template Length<0>(2);
+
+    using IndEntry=Indicator::value_type;
+
     if (S>0 && I>0) {
-      double rate=S*I*s.params.at(SIRParam::Beta0)*
-        (1.0+s.params.at(SIRParam::Beta1)*
-          std::cos(2*boost::math::constants::pi<double>()*(
-            t0-s.params.at(SIRParam::SeasonalPhase))))/
-          (S+I+R);
-      SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"infection rate "<<rate<<" beta0 "<<
-        s.params.at(SIRParam::Beta0) << " beta1 " <<
-        s.params.at(SIRParam::Beta1) << " t0 " << t0 << " N "<<(S+I+R)
-        << " S "<<S <<" I " << I);
+      double rate=0;
+      bool found;
+      int token_count;
+      std::tie(token_count, found)=lm.Get<0>(1,
+        [&] (const std::vector<IndividualToken>& tokens)->int {
+          for (const auto& t : tokens) {
+            auto indicator=ids_.left.find(t.time_entered_place);
+            if (indicator==ids_.left.end()) {
+              //_propagator.Enable(t.id,
+              //  std::unique_ptr<ExpDist>(new ExpDist(rate, te))), te,
+              //  false, rng);
+              ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
+            } else if (indicator->info==t.time_entered_place) {
+              ids_.left.erase(indicator);
+              ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
+            } else {
+              ids_.left.erase(indicator);
+              ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
+              indicator->info=t.time_entered_place;
+            }
+          }
+          return 0;
+        });
+      auto erase_it=ids_.right.equal_range(seen_flag_);
+      auto convert=erase_it.first;
+      for ( ; convert!=erase_it.second; ++convert) {
+        ;
+      }
+      ids_.right.erase(erase_it.first, erase_it.second);
+      seen_flag_=!seen_flag_;
       return {true, std::unique_ptr<ExpDist>(new ExpDist(rate, te))};
     } else {
       SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"infection disable");
@@ -126,7 +186,7 @@ class Infect : public SIRTransition
   }
 
   virtual void Fire(UserState& s, Local& lm, double t0,
-      RandGen& rng) const override {
+      RandGen& rng) override {
     SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire infection " << lm);
     // s0 i1 r2 i3 r4
     lm.template Move<0,0>(0, 3, 1);
@@ -140,7 +200,7 @@ class InfectExact : public SIRTransition
 {
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) const override {
+    double te, double t0) override {
     // If these are just size_t, then the rate calculation overflows.
     int64_t S=lm.template Length<0>(0);
     int64_t I=lm.template Length<0>(1);
@@ -156,7 +216,7 @@ class InfectExact : public SIRTransition
   }
 
   virtual void Fire(UserState& s, Local& lm, double t0,
-      RandGen& rng) const override {
+      RandGen& rng) override {
     SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire infection " << lm);
     lm.template Move<0,0>(0, 3, 1);
   }
@@ -169,7 +229,7 @@ class Recover : public SIRTransition
 {
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) const override {
+    double te, double t0) override {
     int64_t I=lm.template Length<0>(0);
     if (I>0) {
       double rate=I*s.params.at(SIRParam::Gamma);
@@ -183,7 +243,7 @@ class Recover : public SIRTransition
   }
 
   virtual void Fire(UserState& s, Local& lm, double t0,
-      RandGen& rng) const override {
+      RandGen& rng) override {
     SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire recover " << lm);
     lm.template Move<0, 0>(0, 1, 1);
   }
@@ -197,7 +257,7 @@ class Wane : public SIRTransition
 {
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) const override {
+    double te, double t0) override {
     int64_t S=lm.template Length<0>(0);
     double rate=S*s.params.at(SIRParam::Wane);
     if (S>0 && rate>0) {
@@ -211,7 +271,7 @@ class Wane : public SIRTransition
   }
 
   virtual void Fire(UserState& s, Local& lm, double t0,
-      RandGen& rng) const override {
+      RandGen& rng) override {
     SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire wane " << lm);
     lm.template Move<0, 0>(0, 1, 1);
   }
@@ -223,7 +283,7 @@ class Birth : public SIRTransition
 {
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) const override {
+    double te, double t0) override {
     if (s.params.at(SIRParam::Birth)>0) {
       return {true, std::unique_ptr<ExpDist>(
         new ExpDist(s.params.at(SIRParam::Birth), te))};
@@ -233,7 +293,7 @@ class Birth : public SIRTransition
   }
 
   virtual void Fire(UserState& s, Local& lm, double t0,
-      RandGen& rng) const override {
+      RandGen& rng) override {
     SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire birth " << lm);
     lm.template Add<0>(1, IndividualToken{});
   }
@@ -246,7 +306,7 @@ class Death : public SIRTransition
 {
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) const override {
+    double te, double t0) override {
     int64_t SIR=lm.template Length<0>(0);
     if (SIR>0 && s.params.at(SIRParam::Mu)>0) {
       return {true, std::unique_ptr<ExpDist>(
@@ -257,7 +317,7 @@ class Death : public SIRTransition
   }
 
   virtual void Fire(UserState& s, Local& lm, double t0,
-      RandGen& rng) const override {
+      RandGen& rng) override {
     SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire death " << lm);
     lm.template Remove<0>(0, 1, rng);
   }
