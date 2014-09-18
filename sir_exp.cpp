@@ -102,19 +102,22 @@ using Dist=TransitionDistribution<RandGen>;
 using ExpDist=ExponentialDistribution<RandGen>;
 
 
-template<typename RNG>
-class CombinedDistribution : public TransitionDistribution<RandGen> {
-public:
-  CombinedDistribution() {}
+template<typename TransitionType, typename RNG>
+class CombinedDistribution : public TransitionDistribution<RNG> {
+ public:
+  CombinedDistribution(TransitionType* parent) : parent_transition_(parent) {}
   virtual ~CombinedDistribution() {}
   virtual double Sample(double current_time, RNG& rng) const {
-    return std::numeric_limits<double>::infinity(); };
+    return parent_transition_->Sample(current_time, rng);
+  };
   virtual double EnablingTime() const { return 0.0; }
   virtual bool BoundedHazard() const { return false; }
   virtual double HazardIntegral(double t0, double t1) const { return 0.0; }
   virtual double ImplicitHazardIntegral(double xa, double t0) const {
     return 0.0;
   }
+ private:
+  TransitionType* parent_transition_;
 };
 
 
@@ -125,6 +128,7 @@ class Infect : public SIRTransition
 {
   using TokenId=int64_t;
   PropagateCompetingProcesses<TokenId,RandGen> propagator_;
+  std::tuple<TokenId,double> sample_;
   // This object must track what tokens have been changed.
   using Time=double;
   using InOrOut=bool;
@@ -139,7 +143,7 @@ public:
 
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) override {
+    double te, double t0, RandGen& rng) override {
     // If these are just size_t, then the rate calculation overflows.
     int64_t S=lm.template Length<0>(0);
     int64_t I=lm.template Length<0>(1);
@@ -148,22 +152,30 @@ public:
     using IndEntry=Indicator::value_type;
 
     if (S>0 && I>0) {
-      double rate=0;
+      SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Enabled infect S "<<S<<" I "<<I);
+      // Remove the I factor because this is the rate for each I.
+      double rate=S*s.params.at(SIRParam::Beta0)/(S+I+R);
       bool found;
       int token_count;
+      // Keep track of which tokens were added, unmodified, modified.
       std::tie(token_count, found)=lm.Get<0>(1,
         [&] (const std::vector<IndividualToken>& tokens)->int {
           for (const auto& t : tokens) {
             auto indicator=ids_.left.find(t.time_entered_place);
+            SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Enabled token "<<t.id
+              <<" time "<<t.time_entered_place<<" found "
+              <<(indicator==ids_.left.end()));
             if (indicator==ids_.left.end()) {
-              //_propagator.Enable(t.id,
-              //  std::unique_ptr<ExpDist>(new ExpDist(rate, te))), te,
-              //  false, rng);
+              auto dist=std::unique_ptr<Dist>(new ExpDist(rate, te));
+              propagator_.Enable(t.id, dist, te, false, rng);
               ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
             } else if (indicator->info==t.time_entered_place) {
-              ids_.left.erase(indicator);
+              ids_.left.erase(indicator); // Because entry is const.
               ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
             } else {
+              auto dist=std::unique_ptr<Dist>(new ExpDist(rate, te));
+              propagator_.Enable(t.id, dist, te, false, rng);
+              ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
               ids_.left.erase(indicator);
               ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
               indicator->info=t.time_entered_place;
@@ -174,22 +186,37 @@ public:
       auto erase_it=ids_.right.equal_range(seen_flag_);
       auto convert=erase_it.first;
       for ( ; convert!=erase_it.second; ++convert) {
-        ;
+        SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Enabled disable "<<convert->first);
+        propagator_.Disable(convert->first, te);
       }
       ids_.right.erase(erase_it.first, erase_it.second);
       seen_flag_=!seen_flag_;
-      return {true, std::unique_ptr<ExpDist>(new ExpDist(rate, te))};
+      return {true, std::unique_ptr<Dist>(
+        new CombinedDistribution<Infect,RandGen>(this))};
     } else {
       SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"infection disable");
       return {false, std::unique_ptr<Dist>(nullptr)};
     }
   }
 
+  double Sample(double now, RandGen& rng) {
+    sample_=propagator_.Next(now, rng);
+    SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Sample id "<<std::get<0>(sample_)
+      <<" time "<<std::get<1>(sample_));
+    return std::get<1>(sample_);
+  }
+
   virtual void Fire(UserState& s, Local& lm, double t0,
       RandGen& rng) override {
     SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire infection " << lm);
     // s0 i1 r2 i3 r4
-    lm.template Move<0,0>(0, 3, 1);
+    auto which_to_move=std::get<0>(sample_);
+    SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Fire id "<<std::get<0>(sample_)
+      <<" time "<<std::get<1>(sample_));
+    lm.template Move<0,0>(0, 3, [which_to_move](const IndividualToken& t)->bool{
+      return t.id==which_to_move; }, [t0](IndividualToken& t) {
+        t.time_entered_place=t0;
+      });
   }
 };
 
@@ -200,7 +227,7 @@ class InfectExact : public SIRTransition
 {
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) override {
+    double te, double t0, RandGen& rng) override {
     // If these are just size_t, then the rate calculation overflows.
     int64_t S=lm.template Length<0>(0);
     int64_t I=lm.template Length<0>(1);
@@ -229,7 +256,7 @@ class Recover : public SIRTransition
 {
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) override {
+    double te, double t0, RandGen& rng) override {
     int64_t I=lm.template Length<0>(0);
     if (I>0) {
       double rate=I*s.params.at(SIRParam::Gamma);
@@ -257,7 +284,7 @@ class Wane : public SIRTransition
 {
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) override {
+    double te, double t0, RandGen& rng) override {
     int64_t S=lm.template Length<0>(0);
     double rate=S*s.params.at(SIRParam::Wane);
     if (S>0 && rate>0) {
@@ -283,7 +310,7 @@ class Birth : public SIRTransition
 {
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) override {
+    double te, double t0, RandGen& rng) override {
     if (s.params.at(SIRParam::Birth)>0) {
       return {true, std::unique_ptr<ExpDist>(
         new ExpDist(s.params.at(SIRParam::Birth), te))};
@@ -306,7 +333,7 @@ class Death : public SIRTransition
 {
   virtual std::pair<bool, std::unique_ptr<Dist>>
   Enabled(const UserState& s, const Local& lm,
-    double te, double t0) override {
+    double te, double t0, RandGen& rng) override {
     int64_t SIR=lm.template Length<0>(0);
     if (SIR>0 && s.params.at(SIRParam::Mu)>0) {
       return {true, std::unique_ptr<ExpDist>(
@@ -530,9 +557,10 @@ int64_t SIR_run(double end_time, const std::vector<int64_t>& sir_cnt,
 
   //using Propagator=PropagateCompetingProcesses<int64_t,RandGen>;
   using Propagator=NonHomogeneousPoissonProcesses<int64_t,RandGen>;
+  PropagateCompetingProcesses<int64_t,RandGen> simple;
   Propagator competing;
   using Dynamics=StochasticDynamics<SIRGSPN,SIRState,RandGen>;
-  Dynamics dynamics(gspn, {&competing});
+  Dynamics dynamics(gspn, {&competing, &simple});
 
   BOOST_LOG_TRIVIAL(debug) << state.marking;
 
