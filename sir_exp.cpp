@@ -31,6 +31,7 @@ struct IndividualToken
   double time_entered_place;
   int64_t id;
   IndividualToken()=default;
+  IndividualToken(int64_t id, double when) : id(id), time_entered_place(when) {}
 
   inline friend
   std::ostream& operator<<(std::ostream& os, const IndividualToken& it){
@@ -92,6 +93,7 @@ using Local=LocalMarking<Uncolored<IndividualToken>>;
 struct WithParams {
   // Put our parameters here.
   std::map<SIRParam,double> params;
+  int64_t token_cnt;
 };
 
 
@@ -175,7 +177,6 @@ public:
             } else {
               auto dist=std::unique_ptr<Dist>(new ExpDist(rate, te));
               propagator_.Enable(t.id, dist, te, false, rng);
-              ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
               ids_.left.erase(indicator);
               ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
               indicator->info=t.time_entered_place;
@@ -210,13 +211,12 @@ public:
       RandGen& rng) override {
     SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire infection " << lm);
     // s0 i1 r2 i3 r4
-    auto which_to_move=std::get<0>(sample_);
     SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Fire id "<<std::get<0>(sample_)
       <<" time "<<std::get<1>(sample_));
-    lm.template Move<0,0>(0, 3, [which_to_move](const IndividualToken& t)->bool{
-      return t.id==which_to_move; }, [t0](IndividualToken& t) {
+    auto modify_func=[t0](IndividualToken& t) {
         t.time_entered_place=t0;
-      });
+      };
+    lm.template Move<0,0,decltype(modify_func)>(0, 3, 1, modify_func);
   }
 };
 
@@ -322,7 +322,7 @@ class Birth : public SIRTransition
   virtual void Fire(UserState& s, Local& lm, double t0,
       RandGen& rng) override {
     SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire birth " << lm);
-    lm.template Add<0>(1, IndividualToken{});
+    lm.template Add<0>(1, IndividualToken{s.token_cnt++, t0});
   }
 };
 
@@ -549,11 +549,14 @@ int64_t SIR_run(double end_time, const std::vector<int64_t>& sir_cnt,
     sir_places.push_back(place);
   }
 
+  int64_t token_id=0;
   for (int64_t sir_idx=0; sir_idx<3; ++sir_idx) {
     for (int64_t sus_idx=0; sus_idx<sir_cnt[sir_idx]; ++sus_idx) {
-      Add<0>(state.marking, sir_places[sir_idx], IndividualToken{});
+      Add<0>(state.marking, sir_places[sir_idx],
+        IndividualToken{token_id++, 0.0});
     }
   }
+  state.user.token_cnt=token_id;
 
   //using Propagator=PropagateCompetingProcesses<int64_t,RandGen>;
   using Propagator=NonHomogeneousPoissonProcesses<int64_t,RandGen>;
