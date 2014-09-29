@@ -21,7 +21,7 @@ MCRAND=/home/ajd27/Documents/mcrand
 
 CXX=g++
 # -DSMVHIDELOG -pg
-OPT=-g -O2 -DSMVHIDELOG
+OPT=-g -O2 
 INCLUDES=-I$(SEMIMARKOV) -I. -I$(BOOST)/include -I$(HDF5)/include -I$(MCRAND)/include
 LIBS=-L$(BOOST)/lib -L$(HDF5)/lib -L$(MCRAND)/lib \
     -lboost_unit_test_framework$(BOOSTVARIANT) \

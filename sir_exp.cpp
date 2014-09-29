@@ -129,7 +129,7 @@ class CombinedDistribution : public TransitionDistribution<RNG> {
 class Infect : public SIRTransition
 {
   using TokenId=int64_t;
-  NonHomogeneousPoissonProcesses<TokenId,RandGen> propagator_;
+  PropagateCompetingProcesses<TokenId,RandGen> propagator_;
   //PropagateCompetingProcesses<TokenId,RandGen> propagator_;
   std::tuple<TokenId,double> sample_;
   // This object must track what tokens have been changed.
@@ -166,22 +166,23 @@ public:
       std::tie(token_count, found)=lm.Get<0>(1,
         [&] (const std::vector<IndividualToken>& tokens)->int {
           for (const auto& t : tokens) {
+            auto token_te=t.time_entered_place;
             auto indicator=ids_.left.find(t.id);
             // Added
             if (indicator==ids_.left.end()) {
-              auto dist=std::unique_ptr<Dist>(new ExpDist(rate, te));
-              propagator_.Enable(t.id, dist, te, false, rng);
-              ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
+              auto dist=std::unique_ptr<Dist>(new ExpDist(rate, token_te));
+              propagator_.Enable(t.id, dist, token_te, false, rng);
+              ids_.insert(IndEntry{t.id, !seen_flag_, token_te});
             // unmodified
-            } else if (indicator->info==t.time_entered_place) {
-              ids_.left.erase(indicator); // Because entry is const.
-              ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
+            //} else if (indicator->info==t.time_entered_place) {
+            //  ids_.left.erase(indicator); // Because entry is const.
+            //  ids_.insert(IndEntry{t.id, !seen_flag_, token_te});
             // modified
             } else {
-              auto dist=std::unique_ptr<Dist>(new ExpDist(rate, te));
-              propagator_.Enable(t.id, dist, te, false, rng);
+              auto dist=std::unique_ptr<Dist>(new ExpDist(rate, token_te));
+              propagator_.Enable(t.id, dist, token_te, false, rng);
               ids_.left.erase(indicator);
-              ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
+              ids_.insert(IndEntry{t.id, !seen_flag_, token_te});
               indicator->info=t.time_entered_place;
             }
           }

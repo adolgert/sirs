@@ -63,6 +63,42 @@ def showproginfo(f):
         else:
             print("{0}: {1}".format(x, attrs[x]))
 
+class sir_time_and_size:
+    def __init__(self):
+        self.ts=list()
+
+    def __call__(self, traj_dset):
+        cnt=len(traj_dset)
+        logger.debug("{0} values in dataset".format(cnt))
+        # The dataset is an array of tuples, not a 2d array.
+        s=np.zeros(cnt, np.int64)
+        i=np.zeros(cnt, np.int64)
+        r=np.zeros(cnt, np.int64)
+        t=np.zeros(cnt, np.double)
+        for idx, val in enumerate(traj_dset):
+            s[idx], i[idx], r[idx], t[idx]=val
+
+        self.ts.append((t[-1], r[-1]))
+
+    def results(self):
+        return np.array(self.ts)
+
+def sir_final_size(f):
+    # From allen stochastic epidemic
+    # For gamma=1
+    # R0    20  100
+    # 0.5   1.76 1.93
+    # 1     3.34 6.10
+    # 2     8.12 38.34
+    # 5     15.66 79.28
+    # 10    17.98 89.98
+    observer=sir_time_and_size()
+    foreach_trajectory(f, observer)
+    res=observer.results()
+    means=np.average(res, axis=0)
+    print("mean size ", means[0])
+    print("mean time ", means[1])
+
 
 def eeid_long_behavior():
     B=1/70
@@ -82,6 +118,7 @@ if __name__ == "__main__":
     parser.add_function("trajectory", "Plot the trajectory")
     parser.add_function("dir", "List datasets")
     parser.add_function("eeid", "verify eeid example values")
+    parser.add_function("average", "average time and size")
     parser.add_argument("--file", dest="file", action="store",
         default="sirexp.h5", help="data file to read")
 
@@ -98,6 +135,8 @@ if __name__ == "__main__":
         foreach_trajectory(f, showds)
     if args.eeid:
         eeid_long_behavior()
+    if args.average:
+        sir_final_size(f)
     #foreach_trajectory("sirexp.h5", plot_single)
     if not parser.any_function():
         parser.print_help()
