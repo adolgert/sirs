@@ -8,6 +8,21 @@ logger=logging.getLogger(__file__)
 
 
 
+def ensemble_run(total_individual, run_cnt):
+    seed=0
+    to_run=['/usr/bin/time', '-f', '%e', '-o', 'zz.txt',
+        './sirexp', '-j','1', '--runcnt', str(run_cnt),
+        '-s', str(total_individual),
+        '--seed', str(seed), '--loglevel', 'info',
+        '--wane=0.0', '--birth=0.0', '--mu=0.0',
+        '-i1', '-r0']
+    logger.debug(to_run)
+    ret=subprocess.Popen(to_run)
+    result=ret.communicate()[0] # join the process
+    return float(open('zz.txt').read())/run_cnt
+
+
+
 def timing_run(total_individual, run_cnt):
     seed=0
     to_run=['/usr/bin/time', '-f', '%e', '-o', 'zz.txt',
@@ -41,10 +56,13 @@ if __name__=='__main__':
     parser=DefaultArgumentParser(description="Run sirexp many times")
     parser.add_function("exp", "Explore initial conditions")
     parser.add_function("time", "Time how long it takes to run.")
+    parser.add_function("ensemble", "Run a bunch at a size.")
     parser.add_argument("--res", dest="resolution", type=int, action="store",
         default=10, help="How finely to subdivide the SIR space")
     parser.add_argument("--runcnt", dest="runcnt", type=int, action="store",
         default=10, help="How many times to run each simulation")
+    parser.add_argument("--size", dest="size", type=int, action="store",
+        default=10000, help="Total number of individuals")
 
     args=parser.parse_args()
     if args.exp:
@@ -54,3 +72,5 @@ if __name__=='__main__':
                 500000, 1000000]:
             elapsed=timing_run(individual_cnt, args.runcnt)
             print("{0}\t{1}".format(individual_cnt, elapsed))
+    if args.ensemble:
+        ensemble_run(args.size, args.runcnt)

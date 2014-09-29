@@ -129,11 +129,14 @@ class CombinedDistribution : public TransitionDistribution<RNG> {
 class Infect : public SIRTransition
 {
   using TokenId=int64_t;
-  PropagateCompetingProcesses<TokenId,RandGen> propagator_;
+  NonHomogeneousPoissonProcesses<TokenId,RandGen> propagator_;
+  //PropagateCompetingProcesses<TokenId,RandGen> propagator_;
   std::tuple<TokenId,double> sample_;
   // This object must track what tokens have been changed.
   using Time=double;
   using InOrOut=bool;
+  // Use the bimap because it ensures consistency between two
+  // types of access, by token and by inclusion/exclusion.
   using Indicator=boost::bimaps::bimap<boost::bimaps::set_of<TokenId>,
     boost::bimaps::multiset_of<InOrOut>, boost::bimaps::with_info<Time>>;
   Indicator ids_;
@@ -163,17 +166,17 @@ public:
       std::tie(token_count, found)=lm.Get<0>(1,
         [&] (const std::vector<IndividualToken>& tokens)->int {
           for (const auto& t : tokens) {
-            auto indicator=ids_.left.find(t.time_entered_place);
-            SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Enabled token "<<t.id
-              <<" time "<<t.time_entered_place<<" found "
-              <<(indicator==ids_.left.end()));
+            auto indicator=ids_.left.find(t.id);
+            // Added
             if (indicator==ids_.left.end()) {
               auto dist=std::unique_ptr<Dist>(new ExpDist(rate, te));
               propagator_.Enable(t.id, dist, te, false, rng);
               ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
+            // unmodified
             } else if (indicator->info==t.time_entered_place) {
               ids_.left.erase(indicator); // Because entry is const.
               ids_.insert(IndEntry{t.id, !seen_flag_, t.time_entered_place});
+            // modified
             } else {
               auto dist=std::unique_ptr<Dist>(new ExpDist(rate, te));
               propagator_.Enable(t.id, dist, te, false, rng);
@@ -186,9 +189,12 @@ public:
         });
       auto erase_it=ids_.right.equal_range(seen_flag_);
       auto convert=erase_it.first;
+      SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Enabled seen "<<seen_flag_);
+      // Tokens which were removed from this place.
       for ( ; convert!=erase_it.second; ++convert) {
-        SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Enabled disable "<<convert->first);
-        propagator_.Disable(convert->first, te);
+        SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Enabled disable "
+          <<convert->first<<" "<<convert->second);
+        propagator_.Disable(convert->second, t0);
       }
       ids_.right.erase(erase_it.first, erase_it.second);
       seen_flag_=!seen_flag_;
@@ -196,6 +202,11 @@ public:
         new CombinedDistribution<Infect,RandGen>(this))};
     } else {
       SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"infection disable");
+      auto disable_it=ids_.right.begin();
+      for ( ; disable_it!=ids_.right.end(); ++disable_it) {
+        propagator_.Disable(disable_it->second, t0);
+      }
+      ids_.right.erase(ids_.right.begin(), ids_.right.end());
       return {false, std::unique_ptr<Dist>(nullptr)};
     }
   }
@@ -204,6 +215,11 @@ public:
     sample_=propagator_.Next(now, rng);
     SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"Infect::Sample id "<<std::get<0>(sample_)
       <<" time "<<std::get<1>(sample_));
+    if (std::get<1>(sample_)<now) {
+      BOOST_LOG_TRIVIAL(warning) << "Infect::Sample id "<<std::get<0>(sample_)
+        <<" time "<<std::get<1>(sample_) << " now " << now;
+      assert(std::get<1>(sample_)>=now);
+    }
     return std::get<1>(sample_);
   }
 
@@ -460,8 +476,8 @@ struct SIROutput
     int64_t S=Length<0>(state.marking, places_[0]);
     int64_t I=Length<0>(state.marking, places_[1]);
     int64_t R=Length<0>(state.marking, places_[2]);
-    SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"last transition "<<state.last_transition);
-    SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"S="<<S<<" I="<<I<<" R="<<R);
+    SMVLOG(BOOST_LOG_TRIVIAL(debug)<<"last transition "<<state.last_transition
+        <<" t "<<state.CurrentTime()<<" S="<<S<<" I="<<I<<" R="<<R);
 
     if (step_cnt>0) {
       switch (transitions_[state.last_transition]) {
@@ -581,10 +597,11 @@ int64_t SIR_run(double end_time, const std::vector<int64_t>& sir_cnt,
   auto nothing=[](SIRState&)->void {};
   double last_time=state.CurrentTime();
   while (running && state.CurrentTime()<end_time) {
+    SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"SIR_run() time "<<state.CurrentTime());
     running=dynamics(state);
     if (running) {
       double new_time=state.CurrentTime();
-      if (new_time-last_time<-1e-12) {
+      if (new_time-last_time<0) {
         BOOST_LOG_TRIVIAL(warning) << "last time "<<last_time <<" "
           << " new_time "<<new_time;
       }
