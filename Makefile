@@ -21,7 +21,7 @@ MCRAND=/home/ajd27/Documents/mcrand
 
 CXX=g++
 # -DSMVHIDELOG -pg
-OPT=-g -O2 
+OPT=-g -O2 -DSMVHIDELOG
 INCLUDES=-I$(SEMIMARKOV) -I. -I$(BOOST)/include -I$(HDF5)/include -I$(MCRAND)/include
 LIBS=-L$(BOOST)/lib -L$(HDF5)/lib -L$(MCRAND)/lib \
     -lboost_unit_test_framework$(BOOSTVARIANT) \
@@ -48,7 +48,7 @@ hdf_file.o: hdf_file.cpp hdf_file.hpp sir_exp.hpp
 	g++ hdf_file.cpp -DHAVE_CONFIG_H -std=c++11 -fPIC $(INCLUDES) $(OPT) \
 	-c -o hdf_file.o
 
-main.o: main.cpp sirdemo_version.hpp sir_exp.hpp
+main.o: main.cpp sirdemo_version.hpp sir_exp.hpp ensemble.hpp
 	g++ main.cpp -DHAVE_CONFIG_H -std=c++11 -fPIC $(INCLUDES) $(OPT) \
 	-c -o main.o
 

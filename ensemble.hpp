@@ -55,6 +55,7 @@ class Ensemble {
           <<" tidx "<<tidx);
         std::unique_lock<std::mutex> register_done(ensemble_m_);
         ready_flag_[tidx]=2;
+        register_done.unlock();
         thread_done_.notify_one();
       };
       SMVLOG(BOOST_LOG_TRIVIAL(debug)<<"Thread run "<<run_cnt_
@@ -83,6 +84,7 @@ class Ensemble {
             " avail "<<available);
           std::unique_lock<std::mutex> register_done(ensemble_m_);
           ready_flag_[available]=2;
+          register_done.unlock();
           thread_done_.notify_one();
         };
         SMVLOG(BOOST_LOG_TRIVIAL(debug)<<"Thread run m "<<run_cnt_
