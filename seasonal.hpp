@@ -81,7 +81,7 @@ public:
 
   // xa = int_t0^t hazard(s, te) ds.  Solve for t.
   virtual double ImplicitHazardIntegral(double xa, double t0) const {
-    SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Seasonal implicit t0 " << t0);
+    //SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Seasonal implicit t0 " << t0);
     double resolution=1e-9;
     double bounds_err=1e-13;
     int iter_max=1000;

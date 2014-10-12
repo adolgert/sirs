@@ -114,20 +114,20 @@ class Infect : public SIRTransition
           std::cos(2*boost::math::constants::pi<double>()*(
             t0-s.params.at(SIRParam::SeasonalPhase))))/
           (S+I+R);
-      SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"infection rate "<<rate<<" beta0 "<<
-        s.params.at(SIRParam::Beta0) << " beta1 " <<
-        s.params.at(SIRParam::Beta1) << " t0 " << t0 << " N "<<(S+I+R)
-        << " S "<<S <<" I " << I);
+      //SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"infection rate "<<rate<<" beta0 "<<
+      //  s.params.at(SIRParam::Beta0) << " beta1 " <<
+       // s.params.at(SIRParam::Beta1) << " t0 " << t0 << " N "<<(S+I+R)
+       // << " S "<<S <<" I " << I);
       return {true, std::unique_ptr<ExpDist>(new ExpDist(rate, te))};
     } else {
-      SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"infection disable");
+      //SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"infection disable");
       return {false, std::unique_ptr<Dist>(nullptr)};
     }
   }
 
   virtual void Fire(UserState& s, Local& lm, double t0,
       RandGen& rng) const override {
-    SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire infection " << lm);
+    //SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire infection " << lm);
     // s0 i1 r2 i3 r4
     lm.template Move<0,0>(0, 3, 1);
   }
@@ -157,7 +157,7 @@ class InfectExact : public SIRTransition
 
   virtual void Fire(UserState& s, Local& lm, double t0,
       RandGen& rng) const override {
-    SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire infection " << lm);
+    //SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire infection " << lm);
     lm.template Move<0,0>(0, 3, 1);
   }
 };
@@ -173,18 +173,18 @@ class Recover : public SIRTransition
     int64_t I=lm.template Length<0>(0);
     if (I>0) {
       double rate=I*s.params.at(SIRParam::Gamma);
-      SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"recover rate "<< rate);
+      //SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"recover rate "<< rate);
       return {true, std::unique_ptr<ExpDist>(
         new ExpDist(rate, te))};
     } else {
-      SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"recover disable");
+      //SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"recover disable");
       return {false, std::unique_ptr<Dist>(nullptr)};
     }
   }
 
   virtual void Fire(UserState& s, Local& lm, double t0,
       RandGen& rng) const override {
-    SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire recover " << lm);
+    //SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire recover " << lm);
     lm.template Move<0, 0>(0, 1, 1);
   }
 };
@@ -201,18 +201,18 @@ class Wane : public SIRTransition
     int64_t S=lm.template Length<0>(0);
     double rate=S*s.params.at(SIRParam::Wane);
     if (S>0 && rate>0) {
-      SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"wane rate "<< rate);
+      //SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"wane rate "<< rate);
       return {true, std::unique_ptr<ExpDist>(
         new ExpDist(rate, te))};
     } else {
-      SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"wane disable");
+      //SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"wane disable");
       return {false, std::unique_ptr<Dist>(nullptr)};
     }
   }
 
   virtual void Fire(UserState& s, Local& lm, double t0,
       RandGen& rng) const override {
-    SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire wane " << lm);
+    //SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire wane " << lm);
     lm.template Move<0, 0>(0, 1, 1);
   }
 };
@@ -234,7 +234,7 @@ class Birth : public SIRTransition
 
   virtual void Fire(UserState& s, Local& lm, double t0,
       RandGen& rng) const override {
-    SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire birth " << lm);
+    //SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire birth " << lm);
     lm.template Add<0>(1, IndividualToken{});
   }
 };
@@ -258,7 +258,7 @@ class Death : public SIRTransition
 
   virtual void Fire(UserState& s, Local& lm, double t0,
       RandGen& rng) const override {
-    SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire death " << lm);
+    //SMVLOG(BOOST_LOG_TRIVIAL(trace) << "Fire death " << lm);
     lm.template Remove<0>(0, 1, rng);
   }
 };
@@ -373,8 +373,8 @@ struct SIROutput
     int64_t S=Length<0>(state.marking, places_[0]);
     int64_t I=Length<0>(state.marking, places_[1]);
     int64_t R=Length<0>(state.marking, places_[2]);
-    SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"last transition "<<state.last_transition);
-    SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"S="<<S<<" I="<<I<<" R="<<R);
+    //SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"last transition "<<state.last_transition);
+    //SMVLOG(BOOST_LOG_TRIVIAL(trace)<<"S="<<S<<" I="<<I<<" R="<<R);
 
     if (step_cnt>0) {
       switch (transitions_[state.last_transition]) {

@@ -27,6 +27,7 @@ herr_t IterateTrajectories(hid_t group_id, const char* group_name,
       *chosen_idx=std::max(*chosen_idx, 1);
     }
   }
+  return 0;
 }
 
 
@@ -301,4 +302,5 @@ HDFFile::HDFFile(const HDFFile& o)
 : pimpl(o.pimpl) {}
 HDFFile& HDFFile::operator=(const HDFFile& o) {
   pimpl=o.pimpl;
+  return *this;
 }

@@ -189,8 +189,8 @@ int main(int argc, char *argv[]) {
     return -4;
   }
 
-  if (vm.count("infected") and !vm.count("recovered") ||
-      !vm.count("infected") and vm.count("recovered")) {
+  if ((vm.count("infected") && !vm.count("recovered")) ||
+      (!vm.count("infected") && vm.count("recovered"))) {
     std::cout << "You have so set the total and I and R, not just some of them."
       << std::endl;
     return -3;
@@ -238,8 +238,8 @@ int main(int argc, char *argv[]) {
     file.SaveTrajectory(parameters, single_seed, idx, observer->Trajectory());
   };
 
-  Ensemble<decltype(runnable)> ensemble(runnable, thread_cnt, run_cnt,
-    rand_seed);
+  afidd::smv::Ensemble<decltype(runnable),RandGen> ensemble(runnable, thread_cnt,
+      run_cnt, rand_seed);
   ensemble.Run();
   BOOST_LOG_TRIVIAL(debug)<<"Finished running ensemble.";
 

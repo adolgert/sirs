@@ -14,14 +14,14 @@
 BOOST=/usr/local/boost_1_54_0mt
 # Different Boost installations have different suffixes.
 # If there is no suffix, use "BOOSTVARIANT=".
-BOOSTVARIANT=-mt
+BOOSTVARIANT=
 SEMIMARKOV=/usr/local/include/semimarkov-0.1
 HDF5=/usr/local/hdf5-1.8.11
 MCRAND=/home/ajd27/Documents/mcrand
 
-CXX=g++
+CXX=clang++
 # -DSMVHIDELOG -pg
-OPT=-g -O2 -DSMVHIDELOG
+OPT=-std=c++11 -g -O2
 INCLUDES=-I$(SEMIMARKOV) -I. -I$(BOOST)/include -I$(HDF5)/include -I$(MCRAND)/include
 LIBS=-L$(BOOST)/lib -L$(HDF5)/lib -L$(MCRAND)/lib \
     -lboost_unit_test_framework$(BOOSTVARIANT) \
@@ -34,22 +34,22 @@ LIBS=-L$(BOOST)/lib -L$(HDF5)/lib -L$(MCRAND)/lib \
 
 
 sirexp: sir_exp.o main.o seasonal.o hdf_file.o
-	g++ $(OPT) -fPIC -o sirexp sir_exp.o main.o seasonal.o hdf_file.o $(LIBS)
+	$(CXX) $(OPT) -fPIC -o sirexp sir_exp.o main.o seasonal.o hdf_file.o $(LIBS)
 
 sir_exp.o: sir_exp.cpp sir_exp.hpp seasonal.hpp
-	g++ sir_exp.cpp -DHAVE_CONFIG_H -std=c++11 -fPIC $(INCLUDES) $(OPT) \
+	$(CXX) sir_exp.cpp -DHAVE_CONFIG_H -std=c++11 -fPIC $(INCLUDES) $(OPT) \
 	-c -o sir_exp.o
 
 seasonal.o: seasonal.cpp seasonal.hpp
-	g++ seasonal.cpp -DHAVE_CONFIG_H -std=c++11 -fPIC $(INCLUDES) $(OPT) \
+	$(CXX) seasonal.cpp -DHAVE_CONFIG_H -std=c++11 -fPIC $(INCLUDES) $(OPT) \
 	-c -o seasonal.o
 
 hdf_file.o: hdf_file.cpp hdf_file.hpp sir_exp.hpp
-	g++ hdf_file.cpp -DHAVE_CONFIG_H -std=c++11 -fPIC $(INCLUDES) $(OPT) \
+	$(CXX) hdf_file.cpp -DHAVE_CONFIG_H -std=c++11 -fPIC $(INCLUDES) $(OPT) \
 	-c -o hdf_file.o
 
 main.o: main.cpp sirdemo_version.hpp sir_exp.hpp
-	g++ main.cpp -DHAVE_CONFIG_H -std=c++11 -fPIC $(INCLUDES) $(OPT) \
+	$(CXX) main.cpp -DHAVE_CONFIG_H -std=c++11 -fPIC $(INCLUDES) $(OPT) \
 	-c -o main.o
 
 sirdemo_version.hpp: Makefile
