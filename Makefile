@@ -14,12 +14,12 @@
 BOOST=/usr/local/boost_1_54_0mt
 # Different Boost installations have different suffixes.
 # If there is no suffix, use "BOOSTVARIANT=".
-BOOSTVARIANT=
+BOOSTVARIANT=-mt
 SEMIMARKOV=/usr/local/include/semimarkov-0.1
 HDF5=/usr/local/hdf5-1.8.11
 MCRAND=/home/ajd27/Documents/mcrand
 
-CXX=clang++
+CXX=g++
 # -DSMVHIDELOG -pg
 OPT=-std=c++11 -g -O2
 INCLUDES=-I$(SEMIMARKOV) -I. -I$(BOOST)/include -I$(HDF5)/include -I$(MCRAND)/include
